@@ -1,0 +1,13 @@
+{
+  "name": "scargate",
+  "version": "1.0.0",
+  "description": "The Guard at the Door - Block AI mistakes before they happen using principle-based constraints",
+  "author": "Peace-png",
+  "repository": "https://github.com/Peace-png/SCARGate",
+  "license": "MIT",
+  "keywords": ["ai", "safety", "principles", "guardrails", "blocking", "constraints"],
+  "hooks": ["hooks/SCARGate.hook.ts"],
+  "skills": [],
+  "commands": [],
+  "mcpServers": {}
+}

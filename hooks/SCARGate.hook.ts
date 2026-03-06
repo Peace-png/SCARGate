@@ -33,9 +33,10 @@ import { existsSync } from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Use LOCAL daemon (same folder as this hook)
-const SCAR_DAEMON_PATH = join(__dirname, 'scar-daemon.ts');
-const SOUL_PATH = join(__dirname, 'principles', 'SOUL.md');
+// Paths relative to plugin root (one level up from hooks/)
+const PLUGIN_ROOT = join(__dirname, '..');
+const SCAR_DAEMON_PATH = join(PLUGIN_ROOT, 'scar-daemon.ts');
+const SOUL_PATH = join(PLUGIN_ROOT, 'principles', 'SOUL.md');
 
 // ========================================
 // Import SCAR daemon

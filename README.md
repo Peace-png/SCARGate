@@ -32,9 +32,10 @@ With SCARGate:
 
 | File | Purpose |
 |------|---------|
+| `plugin.json` | Plugin manifest for Claude Code |
 | `README.md` | This file - documentation and quick start |
 | `scar-daemon.ts` | Principle matching engine - loads and scores principles |
-| `SCARGate.hook.ts` | The guard - blocks tool calls that violate principles |
+| `hooks/SCARGate.hook.ts` | The guard - blocks tool calls that violate principles |
 | `principles/SOUL.md` | Your principles - the rules to enforce |
 | `docs/HOW_IT_WORKS.md` | Technical deep-dive with flow diagrams |
 | `package.json` | Project config (Bun runtime) |
@@ -44,12 +45,20 @@ With SCARGate:
 
 ## Quick Start
 
-```bash
-# Install
-bun add scargate
+### Option 1: Plugin Install (Recommended)
 
-# Or clone
-git clone https://github.com/YOUR_USERNAME/SCARGate
+```bash
+# In Claude Code
+/plugin install https://github.com/Peace-png/SCARGate
+```
+
+### Option 2: Manual Clone
+
+```bash
+# Clone
+git clone https://github.com/Peace-png/SCARGate
+
+# Add to your Claude Code settings.json hooks
 ```
 
 ### 1. Create Your Principles
