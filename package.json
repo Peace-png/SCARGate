@@ -1,0 +1,25 @@
+{
+  "name": "scargate",
+  "version": "0.1.0",
+  "description": "The Guard at the Door - Principle-based AI action blocking",
+  "main": "scar-daemon.ts",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "match": "bun scar-daemon.ts match",
+    "list": "bun scar-daemon.ts list"
+  },
+  "keywords": [
+    "ai",
+    "safety",
+    "principles",
+    "guardrails",
+    "blocking",
+    "constraint-enforcement"
+  ],
+  "author": "Keystone Contributors",
+  "license": "MIT",
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}
