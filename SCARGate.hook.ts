@@ -26,11 +26,16 @@
  */
 
 import { join, dirname } from 'path';
-import { homedir } from 'os';
+import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 
-const KEYSTONE_DIR = join(homedir(), 'Desktop', 'Keystone');
-const SCAR_DAEMON_PATH = join(KEYSTONE_DIR, 'agents', 'scar-daemon.ts');
+// Get directory of this hook file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Use LOCAL daemon (same folder as this hook)
+const SCAR_DAEMON_PATH = join(__dirname, 'scar-daemon.ts');
+const SOUL_PATH = join(__dirname, 'principles', 'SOUL.md');
 
 // ========================================
 // Import SCAR daemon

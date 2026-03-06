@@ -15,7 +15,7 @@ import { join, dirname } from 'path';
 // Configuration
 // =============================================================================
 
-const SCAR_FILE = join(__dirname, '../constitution/SOUL.md');
+const SCAR_FILE = join(__dirname, 'principles/SOUL.md');
 const STATE_DIR = join(__dirname, 'scar-daemon');
 const STATE_FILE = join(STATE_DIR, 'state.json');
 const LOG_FILE = join(STATE_DIR, 'scar.log');
