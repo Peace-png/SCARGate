@@ -28,6 +28,20 @@ With SCARGate:
 
 ---
 
+## Repository Structure
+
+| File | Purpose |
+|------|---------|
+| `README.md` | This file - documentation and quick start |
+| `scar-daemon.ts` | Principle matching engine - loads and scores principles |
+| `SCARGate.hook.ts` | The guard - blocks tool calls that violate principles |
+| `principles/SOUL.md` | Your principles - the rules to enforce |
+| `docs/HOW_IT_WORKS.md` | Technical deep-dive with flow diagrams |
+| `package.json` | Project config (Bun runtime) |
+| `.gitignore` | Excludes node_modules, env files, etc |
+
+---
+
 ## Quick Start
 
 ```bash
