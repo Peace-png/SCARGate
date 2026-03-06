@@ -1,14 +1,12 @@
 # SCARGate
 
-**The Guard at the Door.**
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Stop your AI from making the same mistakes twice.
+**The Guard at the Door** — principle-based AI action blocking.
 
----
+## TL;DR
 
-## What It Does
-
-SCARGate intercepts AI actions BEFORE they happen and blocks ones that violate your principles.
+SCARGate is a Claude Code plugin that intercepts AI actions BEFORE they happen and blocks ones that violate your principles. Stop your AI from making the same mistakes twice.
 
 ```
 Without SCARGate:
@@ -20,50 +18,43 @@ With SCARGate:
 
 ---
 
-## How It Works
+## Install (in Claude Code)
 
-1. **Write Principles** - Define what your AI should/shouldn't do
-2. **Wire the Hook** - Add SCARGate to your AI's PreToolUse event
-3. **Protected** - Violations get blocked with context on what to do instead
+```bash
+/plugin install https://github.com/Peace-png/SCARGate
+```
+
+That's it. SCARGate is now protecting your session.
 
 ---
 
-## Repository Structure
+## What It Does
 
-| File | Purpose |
-|------|---------|
-| `plugin.json` | Plugin manifest for Claude Code |
-| `README.md` | This file - documentation and quick start |
-| `scar-daemon.ts` | Principle matching engine - loads and scores principles |
-| `hooks/SCARGate.hook.ts` | The guard - blocks tool calls that violate principles |
-| `principles/SOUL.md` | Your principles - the rules to enforce |
-| `docs/HOW_IT_WORKS.md` | Technical deep-dive with flow diagrams |
-| `package.json` | Project config (Bun runtime) |
-| `.gitignore` | Excludes node_modules, env files, etc |
+- **Intercepts** tool calls before they execute
+- **Matches** against your principles in `principles/SOUL.md`
+- **Blocks** high-consequence violations with context on what to do instead
+
+---
+
+## How It Works
+
+1. **Write Principles** - Define what your AI should/shouldn't do in `principles/SOUL.md`
+2. **Plugin Installs Hook** - SCARGate hooks into PreToolUse automatically
+3. **Protected** - Violations get blocked with context on what to do instead
 
 ---
 
 ## Quick Start
 
-### Option 1: Plugin Install (Recommended)
+### 1. Install the Plugin
 
 ```bash
-# In Claude Code
 /plugin install https://github.com/Peace-png/SCARGate
 ```
 
-### Option 2: Manual Clone
+### 2. Add Your Principles
 
-```bash
-# Clone
-git clone https://github.com/Peace-png/SCARGate
-
-# Add to your Claude Code settings.json hooks
-```
-
-### 1. Create Your Principles
-
-Create `principles/SOUL.md`:
+Edit `principles/SOUL.md` with your own rules:
 
 ```markdown
 ### P1: Verify Before Acting
@@ -83,23 +74,36 @@ Create `principles/SOUL.md`:
 > "Check the pocket before you throw away the pants."
 ```
 
-### 2. Wire the Hook
-
-Add to your AI's PreToolUse hook:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      { "type": "command", "command": "bun /path/to/SCARGate.hook.ts" }
-    ]
-  }
-}
-```
-
 ### 3. Test It
 
 Ask your AI to delete something without checking. It should get blocked.
+
+---
+
+## Demo
+
+![demo-gif](docs/demo.gif)
+*(Coming soon)*
+
+---
+
+## Developer Setup
+
+```bash
+git clone https://github.com/Peace-png/SCARGate.git
+cd SCARGate
+bun install
+```
+
+Run the daemon directly:
+```bash
+bun scar-daemon.ts start
+```
+
+Test a match:
+```bash
+bun scar-daemon.ts match "delete this folder"
+```
 
 ---
 
@@ -158,6 +162,20 @@ See `principles/SOUL.md` for 14 real principles from production use:
 
 ---
 
+## Repository Structure
+
+| File | Purpose |
+|------|---------|
+| `plugin.json` | Plugin manifest for Claude Code |
+| `README.md` | This file - documentation and quick start |
+| `scar-daemon.ts` | Principle matching engine |
+| `hooks/SCARGate.hook.ts` | The guard - blocks tool calls |
+| `principles/SOUL.md` | Your principles |
+| `docs/HOW_IT_WORKS.md` | Technical deep-dive |
+| `docs/FUTURE.md` | Future plans (multi-tool support) |
+
+---
+
 ## Why "SCAR"?
 
 SCAR = **S**elf-**C**orrecting **A**rchitecture for **R**eliability
@@ -177,9 +195,66 @@ SCARGate exists because:
 
 ---
 
+## For Non-Coders
+
+Don't know how to code? No problem. Open Claude Code in any folder and paste this:
+
+---
+
+**PASTE THIS:**
+
+```
+I don't know how to code. Set up SCARGate for me like this:
+
+1. Put it on my Desktop
+   - Clone SCARGate to Desktop/SCARGate
+   - If already cloned somewhere else, that's fine, just tell me where
+
+2. Install the stuff it needs
+   - Check if Bun is installed (run `bun --version`)
+   - If not installed, open bun.sh in my browser so I can install it
+   - Once Bun is ready, run `bun install` in the SCARGate folder
+
+3. Make my personal rules file
+   - Create a file called `MY_PRINCIPLES.md` in the SCARGate folder
+   - Copy the example principles from `principles/SOUL.md` into it
+   - This is where I'll put my own rules later (it won't get overwritten on updates)
+
+4. Write down what you did
+   - Create `SETUP_LOG.txt` in the SCARGate folder
+   - Write: the date, what you installed, and that setup is complete
+
+5. Check it works
+   - Run `bun scar-daemon.ts list`
+   - You should see P1 through P14 listed
+   - If that works, tell me: "SCARGate is ready. Your rules are in Desktop/SCARGate/MY_PRINCIPLES.md"
+
+6. If anything breaks
+   Tell me: "Something went wrong. Just say: look in Desktop/SCARGate and help me fix it."
+```
+
+---
+
+**What SCARGate does (plain English):**
+
+SCARGate is like a bouncer for your AI. Before your AI does something risky (delete files, push code, change settings), SCARGate checks if it's allowed. If it breaks your rules, it gets blocked and the AI has to ask you first.
+
+**If something goes wrong later:**
+
+Just open Claude Code and say: *"Look in Desktop/SCARGate and help me fix it."*
+
+---
+
+## Contributing
+
+- Issues and PRs welcome
+- Tag small tasks with `good first issue`
+
+---
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE)
 
 ---
 
