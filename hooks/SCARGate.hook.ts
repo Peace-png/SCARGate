@@ -33,10 +33,13 @@ import { existsSync } from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Paths relative to plugin root (one level up from hooks/)
-const PLUGIN_ROOT = join(__dirname, '..');
-const SCAR_DAEMON_PATH = join(PLUGIN_ROOT, 'scar-daemon.ts');
-const SOUL_PATH = join(PLUGIN_ROOT, 'principles', 'SOUL.md');
+// Paths for PAI integration
+// Hook is at ~/.claude/hooks/
+// SCAR daemon is at ~/.claude/PAI/SCAR/
+// WISDOM (principles) is at ~/.claude/PAI/USER/TELOS/WISDOM.md
+const PAI_ROOT = join(__dirname, '..');
+const SCAR_DAEMON_PATH = join(PAI_ROOT, 'PAI', 'SCAR', 'scar-daemon.ts');
+const SOUL_PATH = join(PAI_ROOT, 'PAI', 'USER', 'TELOS', 'WISDOM.md');
 
 // ========================================
 // Import SCAR daemon
@@ -250,6 +253,54 @@ ${scar.constraints.slice(0, 3).map((c: string) => `• ${c.slice(0, 150)}`).join
 }
 
 // ========================================
+// Tool Classification
+// ========================================
+
+/**
+ * Read-only tools that should NEVER be blocked.
+ * SCAR protects against destructive actions, not information gathering.
+ */
+const READ_ONLY_TOOLS = [
+  'Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TaskOutput',
+  'TaskList', 'TaskGet', 'mcp__web_reader__webReader', 'mcp__4_5v_mcp__analyze_image'
+];
+
+/**
+ * Read-only Bash command patterns.
+ * These commands don't modify the filesystem.
+ */
+const READ_ONLY_PATTERNS = [
+  /^ls\b/, /^dir\b/, /^cat\b/, /^head\b/, /^tail\b/, /^less\b/, /^more\b/,
+  /^grep\b/, /^rg\b/, /^find\b/, /^which\b/, /^whereis\b/, /^type\b/,
+  /^echo\b/, /^printf\b/, /^pwd\b/, /^whoami\b/, /^id\b/, /^uname\b/,
+  /^git status/, /^git log/, /^git diff/, /^git show/, /^git branch/,
+  /^git remote/, /^git config/, /^gh\b/, /^curl\b/, /^wget\b/,
+  /^stat\b/, /^file\b/, /^du\b/, /^df\b/, /^free\b/, /^ps\b/, /^top\b/
+];
+
+/**
+ * Check if a tool operation is read-only.
+ */
+function isReadOnly(toolName: string, toolInput: any): boolean {
+  // Check tool name against allowlist
+  if (READ_ONLY_TOOLS.includes(toolName)) {
+    return true;
+  }
+
+  // For Bash, check the command pattern
+  if (toolName === 'Bash' && toolInput?.command) {
+    const cmd = toolInput.command.trim();
+    for (const pattern of READ_ONLY_PATTERNS) {
+      if (pattern.test(cmd)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// ========================================
 // Main Hook Logic
 // ========================================
 
@@ -275,6 +326,13 @@ async function main() {
   }
 
   const { tool_name, tool_input } = data;
+
+  // Allow read-only operations to pass through without SCAR blocking
+  // SCAR protects against destructive actions, not information gathering
+  if (isReadOnly(tool_name, tool_input)) {
+    console.log(JSON.stringify({ continue: true }));
+    process.exit(0);
+  }
 
   // Get SCAR daemon
   const daemon = await getSCARDaemon();
