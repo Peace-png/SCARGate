@@ -20,6 +20,10 @@ const SCAR_FILE = join(__dirname, '..', 'USER', 'TELOS', 'WISDOM.md');
 const STATE_DIR = join(__dirname, 'scar-daemon');
 const STATE_FILE = join(STATE_DIR, 'state.json');
 const LOG_FILE = join(STATE_DIR, 'scar.log');
+const BLOCKS_LOG = join(STATE_DIR, 'blocks.log');
+
+// Export BLOCKS_LOG for dashboard
+export { BLOCKS_LOG };
 
 // Ensure state directory
 if (!existsSync(STATE_DIR)) {
@@ -351,6 +355,63 @@ class SCARDaemon {
     return this.state.recentMatches;
   }
 
+  /**
+   * Log a block to the blocks log file
+   */
+  logBlock(context: string, result: MatchResult): void {
+    if (!result.matched) return;
+
+    const entry = {
+      timestamp: new Date().toISOString(),
+      context: context.slice(0, 200),
+      scar_id: result.scar?.id,
+      relevance: result.relevance,
+      blocked: result.relevance >= 0.8 && (result.scar?.level?.includes('High') || result.scar?.level?.includes('Critical'))
+    };
+
+    try {
+      const logLine = JSON.stringify(entry) + '\n';
+      writeFileSync(BLOCKS_LOG, logLine, { flag: 'a' });
+    } catch {}
+  }
+
+  /**
+   * Get block logs
+   */
+  getBlockLogs(limit: number = 50): any[] {
+    try {
+      if (!existsSync(BLOCKS_LOG)) return [];
+      const content = readFileSync(BLOCKS_LOG, 'utf-8');
+      const lines = content.trim().split('\n').filter(l => l.trim());
+      return lines.slice(-limit).map(line => {
+        try { return JSON.parse(line); }
+        catch { return null; }
+      }).filter((l): l is any => l !== null);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get statistics for dashboard
+   */
+  getStats(): { totalBlocks: number; todayBlocks: number; principleHits: Record<string, number> } {
+    const logs = this.getBlockLogs(1000);
+    const today = new Date().toDateString();
+
+    const totalBlocks = logs.filter(l => l.blocked).length;
+    const todayBlocks = logs.filter(l => l.blocked && new Date(l.timestamp).toDateString() === today).length;
+
+    const principleHits: Record<string, number> = {};
+    for (const log of logs) {
+      if (log.scar_id) {
+        principleHits[log.scar_id] = (principleHits[log.scar_id] || 0) + 1;
+      }
+    }
+
+    return { totalBlocks, todayBlocks, principleHits };
+  }
+
   private log(level: string, message: string): void {
     const timestamp = new Date().toISOString();
     const logLine = `[${timestamp}] [${level}] ${message}\n`;
@@ -454,10 +515,23 @@ async function main() {
               const body = await req.json();
               const context = body.context || '';
               const result = daemon.match(context);
+              // Log the match for dashboard
+              daemon.logBlock(context, result);
               return Response.json(result, { headers: corsHeaders });
             } catch (e) {
               return Response.json({ error: 'Invalid request' }, { status: 400, headers: corsHeaders });
             }
+          }
+
+          // Blocks log for dashboard
+          if (url.pathname === '/blocks') {
+            const limit = parseInt(url.searchParams.get('limit') || '50');
+            return Response.json(daemon.getBlockLogs(limit), { headers: corsHeaders });
+          }
+
+          // Stats for dashboard
+          if (url.pathname === '/stats') {
+            return Response.json(daemon.getStats(), { headers: corsHeaders });
           }
 
           // List scars
