@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-SCARGate is a Claude Code plugin that intercepts AI actions BEFORE they happen and blocks ones that violate your principles. Stop your AI from making the same mistakes twice.
+SCARGate stops your AI from making the same mistakes twice. It blocks dangerous actions before they happen and shows your AI what to do instead.
 
 ```
 Without SCARGate:
@@ -18,106 +18,97 @@ With SCARGate:
 
 ---
 
-## Install (in Claude Code)
+## For Non-Coders (Start Here)
 
-```bash
+**You don't need to know how to code to use this.**
+
+SCARGate was built by someone who can't verify code. Every feature exists because something actually went wrong.
+
+### What SCARGate Does (Plain English)
+
+Your AI assistant (Claude) can delete files, move things around, and push code to GitHub. Sometimes it gets confident and does things it shouldn't.
+
+SCARGate is like a bouncer. Before Claude does anything risky, SCARGate checks:
+- "Wait, does this break one of Peace's rules?"
+- If yes → Block it, show the rule, suggest what to do instead
+- If no → Let it through
+
+### Why This Matters
+
+If you're a non-coder using AI:
+- You can't verify if the code works
+- When AI says "it's done" — you have to trust it
+- When something breaks — you don't know why
+- You don't file bug reports. You just leave.
+
+SCARGate is AI governance that doesn't require you to be technical. You write rules in plain English. The system enforces them.
+
+### One-Command Install
+
+Open Claude Code and type:
+
+```
 /plugin install https://github.com/Peace-png/SCARGate
 ```
 
 That's it. SCARGate is now protecting your session.
 
----
+### Your First Principle
 
-## What It Does
-
-- **Intercepts** tool calls before they execute
-- **Matches** against your principles in `principles/SOUL.md`
-- **Blocks** high-consequence violations with context on what to do instead
-
----
-
-## How It Works
-
-1. **Write Principles** - Define what your AI should/shouldn't do in `principles/SOUL.md`
-2. **Plugin Installs Hook** - SCARGate hooks into PreToolUse automatically
-3. **Protected** - Violations get blocked with context on what to do instead
-
----
-
-## Quick Start
-
-### 1. Install the Plugin
-
-```bash
-/plugin install https://github.com/Peace-png/SCARGate
-```
-
-### 2. Add Your Principles
-
-Edit `principles/SOUL.md` with your own rules:
+Edit `principles/SOUL.md` and add a rule like this:
 
 ```markdown
-### P1: Verify Before Acting
+### P1: Always Ask Before Deleting
 
-**RULE:** Always check files before moving, renaming, or deleting.
+**RULE:** Never delete files without showing me what's inside first.
 
-**WHY:** I broke 11 files by assuming things were fine.
+**WHY:** I lost work because AI deleted a folder it thought was empty.
 
 **CONSEQUENCE LEVEL:** High
 
 **CONSTRAINTS:**
-1. List folder contents before any delete operation
-2. Search for references before moving files
-3. Ask when uncertain
+1. Show folder contents before any delete
+2. Ask me to confirm
 
 **Remember:**
 > "Check the pocket before you throw away the pants."
 ```
 
-### 3. Test It
+Now your AI can't delete anything without checking first.
 
-Ask your AI to delete something without checking. It should get blocked.
+### If Something Goes Wrong
 
----
+Just say: *"Look in my SCARGate folder and help me fix it."*
 
-## Demo
-
-![demo-gif](docs/demo.gif)
-*(Coming soon)*
+Claude will help you diagnose the issue.
 
 ---
 
-## Developer Setup
+## How It Works
 
-```bash
-git clone https://github.com/Peace-png/SCARGate.git
-cd SCARGate
-bun install
-```
+1. **You write principles** — Rules in plain English about what your AI should/shouldn't do
+2. **SCARGate installs automatically** — Hooks into your Claude Code session
+3. **Protected** — When AI tries something risky, SCARGate checks against your principles
 
-Run the daemon directly:
-```bash
-bun scar-daemon.ts start
-```
+### What Gets Blocked
 
-Test a match:
-```bash
-bun scar-daemon.ts match "delete this folder"
-```
+| Your Action | SCARGate Behavior |
+|-------------|-------------------|
+| Reading files | ✅ Always allowed |
+| Searching | ✅ Always allowed |
+| `ls`, `cat`, `git status` | ✅ Always allowed |
+| Deleting files | 🛔 Blocked if matches principle |
+| Moving/renaming | 🛔 Blocked if matches principle |
+| Push to GitHub | 🛔 Blocked if matches principle |
 
----
+SCARGate blocks when:
+- The action matches one of your principles (80%+ relevance)
+- The principle is marked "High" or "Critical" consequence
+- The principle has specific checks to follow
 
-## What Gets Blocked
+### Read-Only Protection
 
-SCARGate blocks when ALL conditions match:
-
-| Condition | Threshold |
-|-----------|-----------|
-| Relevance | >= 80% (principle matches the action) |
-| Level | Critical or High consequence |
-| Constraints | Principle has actionable checks |
-
-Low/Medium principles just advise. High/Critical ones block.
+SCARGate never blocks information gathering. It only blocks *destructive* actions. You can always read, search, and explore — the protection kicks in when something is about to change or be deleted.
 
 ---
 
@@ -128,9 +119,7 @@ Low/Medium principles just advise. High/Critical ones block.
 
 **RULE:** What the principle requires
 
-**WHY:** Origin story (why this matters)
-
-**ORIGIN:** When/how this was learned
+**WHY:** Why this matters (the origin story)
 
 **CONSEQUENCE LEVEL:** Critical | High | Medium | Low
 
@@ -138,41 +127,73 @@ Low/Medium principles just advise. High/Critical ones block.
 The mistake that led to this principle
 
 **YANG — What that caused:**
-The consequences of that mistake
+What went wrong because of that mistake
 
 **CONSTRAINTS:**
-1. First actionable check
-2. Second actionable check
-3. Third actionable check
+1. First check to perform
+2. Second check to perform
+3. Third check to perform
 
 **Remember:**
 > A memorable phrase that captures the essence
 ```
 
+**Levels:**
+- **Critical/High** → Blocks the action
+- **Medium/Low** → Advises but doesn't block
+
 ---
 
 ## Example Principles
 
-See `principles/SOUL.md` for 14 real principles from production use:
+The repo includes 14 real principles from production use:
 
-- P1: Verify Before Acting (stops file destruction)
-- P5: Substrate Reality (stops hallucination)
-- P7: Error Ownership (stops defensive lying)
-- P11: Silent Churn (stops losing non-coders)
+| Principle | What It Stops |
+|-----------|---------------|
+| P1: Verify Before Acting | Deleting without checking |
+| P5: Substrate Reality | Hallucinating content that doesn't exist |
+| P7: Error Ownership | Defending mistakes instead of owning them |
+| P11: Silent Churn | Losing non-coder users silently |
+
+See `principles/WISDOM.md` for the full set.
 
 ---
 
-## Repository Structure
+## For Developers
+
+### Install
+
+```bash
+/plugin install https://github.com/Peace-png/SCARGate
+```
+
+### Dev Setup
+
+```bash
+git clone https://github.com/Peace-png/SCARGate.git
+cd SCARGate
+bun install
+```
+
+Run the daemon:
+```bash
+bun scar-daemon.ts start
+```
+
+Test a match:
+```bash
+bun scar-daemon.ts match "delete this folder"
+```
+
+### Repository Structure
 
 | File | Purpose |
 |------|---------|
 | `plugin.json` | Plugin manifest for Claude Code |
-| `README.md` | This file - documentation and quick start |
 | `scar-daemon.ts` | Principle matching engine |
 | `hooks/SCARGate.hook.ts` | The guard - blocks tool calls |
-| `principles/SOUL.md` | Your principles |
-| `docs/HOW_IT_WORKS.md` | Technical deep-dive |
-| `docs/FUTURE.md` | Future plans (multi-tool support) |
+| `principles/WISDOM.md` | Example principles (14 real ones) |
+| `docs/STACK.md` | System architecture |
 
 ---
 
@@ -180,7 +201,7 @@ See `principles/SOUL.md` for 14 real principles from production use:
 
 SCAR = **S**elf-**C**orrecting **A**rchitecture for **R**eliability
 
-Also: Scars are how we remember wounds. Principles are scars encoded as rules.
+Also: Scars are how we remember wounds. Every principle in this system exists because something actually went wrong. These aren't theoretical rules — they're lessons encoded as protection.
 
 ---
 
@@ -190,58 +211,19 @@ Also: Scars are how we remember wounds. Principles are scars encoded as rules.
 
 SCARGate exists because:
 - AI systems repeat mistakes
-- Humans shouldn't have to supervise every action
+- Non-coders can't verify code
 - Principles work better when enforced, not just displayed
+- No-code AI governance shouldn't require technical knowledge
 
 ---
 
-## For Non-Coders
+## Who This Is For
 
-Don't know how to code? No problem. Open Claude Code in any folder and paste this:
+- **Non-coders using AI** — You want protection without needing to understand code
+- **AI governance** — You need principled AI behavior, not just prompts
+- **No-code workflows** — You work with AI but don't write software
 
----
-
-**PASTE THIS:**
-
-```
-I don't know how to code. Set up SCARGate for me like this:
-
-1. Put it on my Desktop
-   - Clone SCARGate to Desktop/SCARGate
-   - If already cloned somewhere else, that's fine, just tell me where
-
-2. Install the stuff it needs
-   - Check if Bun is installed (run `bun --version`)
-   - If not installed, open bun.sh in my browser so I can install it
-   - Once Bun is ready, run `bun install` in the SCARGate folder
-
-3. Make my personal rules file
-   - Create a file called `MY_PRINCIPLES.md` in the SCARGate folder
-   - Copy the example principles from `principles/SOUL.md` into it
-   - This is where I'll put my own rules later (it won't get overwritten on updates)
-
-4. Write down what you did
-   - Create `SETUP_LOG.txt` in the SCARGate folder
-   - Write: the date, what you installed, and that setup is complete
-
-5. Check it works
-   - Run `bun scar-daemon.ts list`
-   - You should see P1 through P14 listed
-   - If that works, tell me: "SCARGate is ready. Your rules are in Desktop/SCARGate/MY_PRINCIPLES.md"
-
-6. If anything breaks
-   Tell me: "Something went wrong. Just say: look in Desktop/SCARGate and help me fix it."
-```
-
----
-
-**What SCARGate does (plain English):**
-
-SCARGate is like a bouncer for your AI. Before your AI does something risky (delete files, push code, change settings), SCARGate checks if it's allowed. If it breaks your rules, it gets blocked and the AI has to ask you first.
-
-**If something goes wrong later:**
-
-Just open Claude Code and say: *"Look in Desktop/SCARGate and help me fix it."*
+This combination — **non-coder + no-code + ai-governance** — doesn't exist anywhere else.
 
 ---
 
@@ -249,6 +231,7 @@ Just open Claude Code and say: *"Look in Desktop/SCARGate and help me fix it."*
 
 - Issues and PRs welcome
 - Tag small tasks with `good first issue`
+- Non-coder contributions especially valued — if something is confusing, that's a bug
 
 ---
 
@@ -262,4 +245,4 @@ MIT — see [LICENSE](LICENSE)
 
 Built from the Keystone Personal AI Infrastructure project.
 
-The principles in `principles/SOUL.md` were learned the hard way—by making mistakes and documenting them.
+The principles in `principles/WISDOM.md` were learned the hard way—by making mistakes and documenting them.
