@@ -16,6 +16,8 @@ With SCARGate:
   AI about to make mistake → SCARGate blocks → Shows principle → AI corrects
 ```
 
+![SCARGate Demo](docs/demo.png)
+
 ---
 
 ## For Non-Coders (Start Here)

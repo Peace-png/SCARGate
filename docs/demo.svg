@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="600" fill="url(#bgGrad)"/>
+
+  <!-- Title -->
+  <text x="600" y="45" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="700" fill="#ffffff" text-anchor="middle">SCARGate: AI Safety Layer in Action</text>
+
+  <!-- LEFT SIDE - WITHOUT SCARGate -->
+  <g transform="translate(40, 80)">
+    <!-- Terminal container -->
+    <rect x="0" y="0" width="520" height="440" rx="12" fill="#0d1117" filter="url(#shadow)"/>
+    <rect x="0" y="0" width="520" height="40" rx="12" fill="#21262d"/>
+    <rect x="0" y="28" width="520" height="12" fill="#21262d"/>
+
+    <!-- Window buttons -->
+    <circle cx="20" cy="20" r="7" fill="#ff5f56"/>
+    <circle cx="44" cy="20" r="7" fill="#ffbd2e"/>
+    <circle cx="68" cy="20" r="7" fill="#27ca3f"/>
+
+    <!-- Title bar -->
+    <text x="260" y="26" font-family="monospace" font-size="14" fill="#8b949e" text-anchor="middle">Terminal</text>
+
+    <!-- WITHOUT label -->
+    <rect x="20" y="55" width="180" height="30" rx="6" fill="#3d1f1f"/>
+    <text x="110" y="76" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#ff6b6b" text-anchor="middle">WITHOUT SCARGate</text>
+
+    <!-- Command line -->
+    <text x="20" y="115" font-family="monospace" font-size="15" fill="#8b949e">$</text>
+    <text x="45" y="115" font-family="monospace" font-size="15" fill="#ff7b72">rm</text>
+    <text x="75" y="115" font-family="monospace" font-size="15" fill="#ff7b72">-rf</text>
+    <text x="110" y="115" font-family="monospace" font-size="15" fill="#79c0ff">/home/peace/important-project</text>
+
+    <!-- Blinking cursor -->
+    <rect x="340" y="100" width="10" height="18" fill="#58a6ff" opacity="0.7">
+      <animate attributeName="opacity" values="0.7;0;0.7" dur="1s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Result -->
+    <text x="20" y="155" font-family="monospace" font-size="15" fill="#3fb950">Done!</text>
+
+    <!-- Sad icon -->
+    <text x="80" y="158" font-size="18">💔</text>
+
+    <!-- Warning box -->
+    <rect x="20" y="185" width="480" height="100" rx="8" fill="#2d1f1f" stroke="#ff6b6b" stroke-width="1"/>
+    <text x="40" y="215" font-family="monospace" font-size="14" fill="#ff6b6b" font-weight="bold">DELETION COMPLETE</text>
+    <text x="40" y="245" font-family="monospace" font-size="14" fill="#f0883e">11 files deleted. No warning.</text>
+    <text x="40" y="272" font-family="monospace" font-size="13" fill="#8b949e">No chance to reconsider.</text>
+  </g>
+
+  <!-- CENTER ARROW -->
+  <g transform="translate(580, 280)">
+    <path d="M0,20 L40,20 L40,10 L60,30 L40,50 L40,40 L0,40 Z" fill="#30363d"/>
+  </g>
+
+  <!-- RIGHT SIDE - WITH SCARGate -->
+  <g transform="translate(640, 80)">
+    <!-- Terminal container -->
+    <rect x="0" y="0" width="520" height="440" rx="12" fill="#0d1117" filter="url(#shadow)"/>
+    <rect x="0" y="0" width="520" height="40" rx="12" fill="#21262d"/>
+    <rect x="0" y="28" width="520" height="12" fill="#21262d"/>
+
+    <!-- Window buttons -->
+    <circle cx="20" cy="20" r="7" fill="#ff5f56"/>
+    <circle cx="44" cy="20" r="7" fill="#ffbd2e"/>
+    <circle cx="68" cy="20" r="7" fill="#27ca3f"/>
+
+    <!-- Title bar -->
+    <text x="260" y="26" font-family="monospace" font-size="14" fill="#8b949e" text-anchor="middle">Terminal</text>
+
+    <!-- WITH label -->
+    <rect x="20" y="55" width="160" height="30" rx="6" fill="#1f3d1f"/>
+    <text x="100" y="76" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#3fb950" text-anchor="middle">WITH SCARGate</text>
+
+    <!-- Command line -->
+    <text x="20" y="115" font-family="monospace" font-size="15" fill="#8b949e">$</text>
+    <text x="45" y="115" font-family="monospace" font-size="15" fill="#ff7b72">rm</text>
+    <text x="75" y="115" font-family="monospace" font-size="15" fill="#ff7b72">-rf</text>
+    <text x="110" y="115" font-family="monospace" font-size="15" fill="#79c0ff">/home/peace/important-project</text>
+
+    <!-- BLOCKED result -->
+    <g filter="url(#glow)">
+      <text x="20" y="155" font-family="system-ui, sans-serif" font-size="16" font-weight="bold" fill="#ff4444">BLOCKED</text>
+    </g>
+    <!-- Stop sign icon -->
+    <g transform="translate(95, 140)">
+      <polygon points="10,0 20,5 20,15 10,20 0,15 0,5" fill="#ff4444"/>
+      <rect x="8" y="6" width="4" height="8" fill="#ffffff"/>
+    </g>
+
+    <!-- SCARGate intervention box -->
+    <rect x="20" y="175" width="480" height="230" rx="8" fill="#1a2332" stroke="#58a6ff" stroke-width="2"/>
+
+    <!-- Header -->
+    <rect x="20" y="175" width="480" height="35" rx="8" fill="#1f3d5c"/>
+    <rect x="20" y="195" width="480" height="15" fill="#1f3d5c"/>
+    <text x="35" y="200" font-family="monospace" font-size="13" fill="#58a6ff" font-weight="bold">SCARGate Intervention</text>
+
+    <!-- Principle -->
+    <rect x="35" y="225" width="60" height="22" rx="4" fill="#ff7b72"/>
+    <text x="65" y="241" font-family="system-ui, sans-serif" font-size="12" font-weight="bold" fill="#ffffff" text-anchor="middle">P1</text>
+    <text x="105" y="241" font-family="system-ui, sans-serif" font-size="14" fill="#c9d1d9" font-weight="600">Verify Before Acting</text>
+
+    <!-- Quote -->
+    <text x="35" y="275" font-family="system-ui, sans-serif" font-size="13" fill="#8b949e" font-style="italic">"Check the pocket before you throw away the pants."</text>
+
+    <!-- Suggestions -->
+    <text x="35" y="310" font-family="system-ui, sans-serif" font-size="13" fill="#58a6ff" font-weight="600">What to do instead:</text>
+
+    <circle cx="50" cy="335" r="4" fill="#3fb950"/>
+    <text x="65" y="340" font-family="monospace" font-size="13" fill="#79c0ff">ls -la /home/peace/important-project</text>
+
+    <circle cx="50" cy="365" r="4" fill="#3fb950"/>
+    <text x="65" y="370" font-family="system-ui, sans-serif" font-size="13" fill="#c9d1d9">Ask user to confirm deletion</text>
+  </g>
+
+  <!-- Footer text -->
+  <text x="600" y="570" font-family="system-ui, sans-serif" font-size="12" fill="#6e7681" text-anchor="middle">SCARGate - Preventing AI catastrophes through simple verification principles</text>
+</svg>
