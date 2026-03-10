@@ -27,7 +27,7 @@
 
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 
 // Get directory of this hook file
 const __filename = fileURLToPath(import.meta.url);
@@ -42,10 +42,54 @@ const SCAR_DAEMON_PATH = join(PAI_ROOT, 'PAI', 'SCAR', 'scar-daemon.ts');
 const SOUL_PATH = join(PAI_ROOT, 'PAI', 'USER', 'TELOS', 'WISDOM.md');
 
 // ========================================
-// Import SCAR daemon
+// SCAR Daemon Communication
 // ========================================
 
-// Dynamic import to get the daemon
+const SCAR_STATE_DIR = join(PAI_ROOT, 'PAI', 'SCAR', 'scar-daemon');
+const SCAR_PORT_FILE = join(SCAR_STATE_DIR, 'port');
+const DEFAULT_SCAR_PORT = 3773;
+
+/**
+ * Check if SCAR daemon is running via HTTP
+ */
+async function checkDaemonRunning(): Promise<number | null> {
+  try {
+    if (existsSync(SCAR_PORT_FILE)) {
+      const port = parseInt(readFileSync(SCAR_PORT_FILE, 'utf-8').trim());
+      // Quick health check
+      const response = await fetch(`http://localhost:${port}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(500) // 500ms timeout
+      });
+      if (response.ok) {
+        return port;
+      }
+    }
+  } catch {
+    // Daemon not running or not responding
+  }
+  return null;
+}
+
+/**
+ * Match context via HTTP to running daemon
+ */
+async function matchViaHttp(port: number, context: string): Promise<any> {
+  try {
+    const response = await fetch(`http://localhost:${port}/match`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context }),
+      signal: AbortSignal.timeout(1000) // 1s timeout
+    });
+    return await response.json();
+  } catch (e) {
+    console.error('[SCARGate] HTTP match failed:', e);
+    return null;
+  }
+}
+
+// Fallback: Dynamic import to get the daemon (for when daemon not running)
 async function getSCARDaemon() {
   try {
     const module = await import(SCAR_DAEMON_PATH);
@@ -334,16 +378,37 @@ async function main() {
     process.exit(0);
   }
 
-  // Get SCAR daemon
+  // Build context for matching
+  const context = buildContext(tool_name, tool_input);
+
+  // Try HTTP first (preferred - talks to running daemon)
+  const daemonPort = await checkDaemonRunning();
+  if (daemonPort) {
+    const result = await matchViaHttp(daemonPort, context);
+    if (result) {
+      const { block, reason } = shouldBlock(result);
+      if (block) {
+        console.log(JSON.stringify({
+          continue: false,
+          reason: reason
+        }));
+        process.exit(0);
+      }
+      // Match succeeded, allow tool
+      console.log(JSON.stringify({ continue: true }));
+      process.exit(0);
+    }
+    // HTTP failed, fall through to import fallback
+    console.error('[SCARGate] HTTP match failed, falling back to import');
+  }
+
+  // Fallback: Import daemon directly (slower, but works without running daemon)
   const daemon = await getSCARDaemon();
   if (!daemon) {
     // SCAR not available - fail OPEN
     console.log(JSON.stringify({ continue: true }));
     process.exit(0);
   }
-
-  // Build context for matching
-  const context = buildContext(tool_name, tool_input);
 
   // Run SCAR match
   try {

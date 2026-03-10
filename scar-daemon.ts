@@ -15,7 +15,8 @@ import { join, dirname } from 'path';
 // Configuration
 // =============================================================================
 
-const SCAR_FILE = join(__dirname, 'principles/SOUL.md');
+// PAI Integration: Read from TELOS/WISDOM.md
+const SCAR_FILE = join(__dirname, '..', 'USER', 'TELOS', 'WISDOM.md');
 const STATE_DIR = join(__dirname, 'scar-daemon');
 const STATE_FILE = join(STATE_DIR, 'state.json');
 const LOG_FILE = join(STATE_DIR, 'scar.log');
@@ -358,7 +359,7 @@ class SCARDaemon {
       writeFileSync(LOG_FILE, logLine, { flag: 'a' });
     } catch {}
 
-    console.log(`[SCAR-DAEMON] [${level}] ${message}`);
+    console.error(`[SCAR-DAEMON] [${level}] ${message}`);
   }
 }
 
@@ -384,6 +385,7 @@ async function main() {
   switch (cmd) {
     case 'start':
     case 'run':
+      const port = parseInt(args[1]) || 3773;
       console.log('Starting SCAR daemon...');
       const status = daemon.getStatus();
       console.log('');
@@ -392,6 +394,7 @@ async function main() {
       console.log(`  Matches triggered: ${status.matchesTriggered}`);
       console.log('');
       console.log('SCAR daemon is now watching.');
+      console.log(`HTTP server starting on port ${port}...`);
       console.log('Press Ctrl+C to stop.');
       console.log('');
 
@@ -404,6 +407,10 @@ async function main() {
         console.error('[SCAR] Failed to write heartbeat:', e);
       }
 
+      // Write port file for SCARGate to find
+      const portFile = join(STATE_DIR, 'port');
+      writeFileSync(portFile, String(port));
+
       // Keep running with heartbeat
       const heartbeatInterval = setInterval(() => {
         try {
@@ -414,8 +421,74 @@ async function main() {
         }
       }, 5000);
 
+      // Start HTTP server using Bun's built-in server
+      const server = Bun.serve({
+        port,
+        async fetch(req) {
+          const url = new URL(req.url);
+
+          // CORS headers for all responses
+          const corsHeaders = {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          };
+
+          // Handle preflight
+          if (req.method === 'OPTIONS') {
+            return new Response(null, { headers: corsHeaders });
+          }
+
+          // Health check
+          if (url.pathname === '/health') {
+            return Response.json({
+              status: 'ok',
+              scarsLoaded: daemon.getStatus().scarsLoaded,
+              uptime: process.uptime()
+            }, { headers: corsHeaders });
+          }
+
+          // Match endpoint
+          if (url.pathname === '/match' && req.method === 'POST') {
+            try {
+              const body = await req.json();
+              const context = body.context || '';
+              const result = daemon.match(context);
+              return Response.json(result, { headers: corsHeaders });
+            } catch (e) {
+              return Response.json({ error: 'Invalid request' }, { status: 400, headers: corsHeaders });
+            }
+          }
+
+          // List scars
+          if (url.pathname === '/scars') {
+            return Response.json(daemon.getScars(), { headers: corsHeaders });
+          }
+
+          // Status
+          if (url.pathname === '/status') {
+            return Response.json(daemon.getStatus(), { headers: corsHeaders });
+          }
+
+          // Reload
+          if (url.pathname === '/reload' && req.method === 'POST') {
+            daemon.reload();
+            return Response.json({ reloaded: daemon.getScars().length }, { headers: corsHeaders });
+          }
+
+          return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
+        }
+      });
+
+      console.log(`[SCAR] HTTP server running on http://localhost:${port}`);
+      console.log(`[SCAR] Endpoints:`);
+      console.log(`[SCAR]   POST /match  - Check context against scars`);
+      console.log(`[SCAR]   GET  /health - Health check`);
+      console.log(`[SCAR]   GET  /scars  - List all scars`);
+      console.log(`[SCAR]   GET  /status - Daemon status`);
+      console.log(`[SCAR]   POST /reload - Reload scars from WISDOM.md`);
+
       // Periodic checkpoint (every 5 minutes)
-      // This ensures SCAR advisories are captured even if user closes window without typing 'exit'
       const SESSION_FILE = join(__dirname, '../constitution/SESSION.md');
       const checkpointInterval = setInterval(() => {
         try {
@@ -471,6 +544,9 @@ ${result.advisory?.checks ? `**Checks:**\n${result.advisory.checks.slice(0, 3).m
       process.on('SIGINT', () => {
         clearInterval(heartbeatInterval);
         clearInterval(checkpointInterval);
+        server.stop();
+        // Remove port file
+        try { require('fs').unlinkSync(portFile); } catch {}
         console.log('[SCAR] Shutting down...');
         process.exit(0);
       });
@@ -478,6 +554,8 @@ ${result.advisory?.checks ? `**Checks:**\n${result.advisory.checks.slice(0, 3).m
       process.on('SIGTERM', () => {
         clearInterval(heartbeatInterval);
         clearInterval(checkpointInterval);
+        server.stop();
+        try { require('fs').unlinkSync(portFile); } catch {}
         console.log('[SCAR] Shutting down...');
         process.exit(0);
       });

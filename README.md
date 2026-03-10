@@ -50,7 +50,73 @@ If you're a non-coder using AI:
 
 SCARGate is AI governance that doesn't require you to be technical. You write rules in plain English. The system enforces them.
 
-### One-Command Install
+---
+
+### 🚀 Copy This Prompt (Give It To Your AI)
+
+Don't know how to set this up? Copy everything below and paste it to your AI assistant (Claude, ChatGPT, etc.):
+
+```
+I want to set up SCARGate - an AI safety plugin that blocks dangerous actions.
+
+My situation:
+- I am NOT a coder - I cannot verify code or debug issues myself
+- I need you to do the technical setup for me
+- I need plain English explanations of what's happening
+- I need you to check each step before moving on
+
+Here's what I need you to do:
+
+STEP 1 - Check Prerequisites
+Run these commands and tell me the results:
+- `bun --version` (need Bun runtime)
+- `claude --version` (need Claude Code CLI)
+If either is missing, install it for me or give me a link.
+
+STEP 2 - Install SCARGate
+Run: /plugin install https://github.com/Peace-png/SCARGate
+Tell me if it worked. If it failed, fix it.
+
+STEP 3 - Start the Daemon
+SCARGate has a background process that watches for dangerous actions.
+Run: cd ~/.claude/PAI/SCAR && bun scar-daemon.ts start
+This should start a server on port 3773.
+If this fails, tell me exactly what went wrong in plain English.
+
+STEP 4 - Create My Rules File
+Create a file at ~/.claude/PAI/USER/TELOS/WISDOM.md with my first principle.
+Use this template - fill in something relevant to MY work:
+
+### P1: [What I Want To Prevent]
+
+**RULE:** [The rule in plain English]
+
+**WHY:** [Why this matters to me]
+
+**CONSEQUENCE LEVEL:** High
+
+**CONSTRAINTS:**
+1. [What to check before doing this action]
+2. [Another safety check]
+
+**Remember:**
+> "[A memorable phrase]"
+
+STEP 5 - Test It
+Try to do something that should be blocked (like asking me to delete a folder).
+If it gets blocked, tell me: "SCARGate is working. Your AI is now protected."
+If it doesn't get blocked, debug it for me.
+
+IMPORTANT:
+- Do NOT skip steps
+- Do NOT assume something worked - verify each step
+- If you get stuck, explain the problem in plain English
+- Save a SETUP_LOG.txt file so we remember what was done
+```
+
+---
+
+### One-Command Install (If You Know What You're Doing)
 
 Open Claude Code and type:
 
@@ -58,7 +124,11 @@ Open Claude Code and type:
 /plugin install https://github.com/Peace-png/SCARGate
 ```
 
-That's it. SCARGate is now protecting your session.
+Then start the daemon:
+
+```bash
+cd ~/.claude/PAI/SCAR && bun scar-daemon.ts start &
+```
 
 ### Your First Principle
 
