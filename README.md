@@ -235,6 +235,62 @@ systemctl --user status scar-daemon
 
 ---
 
+## Dashboard (TUI)
+
+SCARGate includes a terminal dashboard for real-time monitoring.
+
+### Run Dashboard
+
+```bash
+bun ~/.claude/PAI/SCAR/dashboard.ts
+```
+
+### What You See
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    🛡️  SCARGate Dashboard                                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+● Daemon Online  │  Port: 3773  │  Uptime: 5m  │  Scars: 14
+
+Statistics
+  Total blocks: 3   │   Today: 3
+
+Top Principles Triggered
+  P1   ██ 2
+  P9   █ 1
+
+Recent Blocked Actions
+  12:12:32 PM  🛔 delete folder verify check path rm -rf...
+           P1 @ 90%
+
+────────────────────────────────────────────────────────────────────────────────
+Press q to quit │ r to refresh │ Auto-refresh: 2000ms
+```
+
+### Controls
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit |
+| `r` | Refresh now |
+| `Ctrl+C` | Quit |
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/status` | GET | Daemon status |
+| `/stats` | GET | Block statistics |
+| `/blocks` | GET | Recent blocks |
+| `/scars` | GET | List all scars |
+| `/match` | POST | Match context against scars |
+| `/reload` | POST | Reload scars from WISDOM.md |
+
+---
+
 ## Principle Format
 
 ```markdown
