@@ -1,6 +1,11 @@
 # SCARGate
 
+[![GitHub stars](https://img.shields.io/github/stars/Peace-png/SCARGate?style=social)](https://github.com/Peace-png/SCARGate/stargazers)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Claude Code](https://img.shields.io/badge/Platform-Claude_Code-orange)](https://claude.ai/code)
+[![Bun](https://img.shields.io/badge/Runtime-Bun-black)](https://bun.sh)
+[![Non-Coder Friendly](https://img.shields.io/badge/For-Non_Coders-green)](https://github.com/Peace-png/SCARGate#-for-non-coders-start-here)
+[![AI Governance](https://img.shields.io/badge/Topic-AI_Governance-purple)](https://github.com/Peace-png/SCARGate)
 
 **The Guard at the Door** — principle-based AI action blocking.
 
