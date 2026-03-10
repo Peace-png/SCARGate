@@ -1,0 +1,21 @@
+[Unit]
+Description=SCAR Daemon - Living Conscience
+Documentation=https://github.com/Peace-png/SCARGate
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/peace/.bun/bin/bun /home/peace/.claude/PAI/SCAR/scar-daemon.ts start 3773
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=/home/peace/.claude/PAI/SCAR
+
+# Environment
+Environment="NODE_ENV=production"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

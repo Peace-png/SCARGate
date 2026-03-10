@@ -107,6 +107,14 @@ Try to do something that should be blocked (like asking me to delete a folder).
 If it gets blocked, tell me: "SCARGate is working. Your AI is now protected."
 If it doesn't get blocked, debug it for me.
 
+STEP 6 - Auto-Start (Optional but Recommended)
+Set up SCARGate to start automatically when I log in:
+- Copy the service file: `cp systemd/scar-daemon.service ~/.config/systemd/user/`
+- Edit paths if my username isn't "peace"
+- Run: `systemctl --user enable --now scar-daemon.service`
+- Verify: `curl http://localhost:3773/health`
+Tell me: "SCARGate will now start automatically on login."
+
 IMPORTANT:
 - Do NOT skip steps
 - Do NOT assume something worked - verify each step
@@ -186,6 +194,44 @@ SCARGate blocks when:
 ### Read-Only Protection
 
 SCARGate never blocks information gathering. It only blocks *destructive* actions. You can always read, search, and explore — the protection kicks in when something is about to change or be deleted.
+
+---
+
+## Auto-Start on Login (Linux)
+
+The SCAR daemon can start automatically when you log in using systemd.
+
+### Quick Setup
+
+```bash
+# Copy the service file
+mkdir -p ~/.config/systemd/user/
+cp systemd/scar-daemon.service ~/.config/systemd/user/
+
+# Edit paths if needed (if your username isn't "peace")
+nano ~/.config/systemd/user/scar-daemon.service
+
+# Enable and start
+systemctl --user daemon-reload
+systemctl --user enable scar-daemon.service
+systemctl --user start scar-daemon.service
+
+# Verify it's running
+curl http://localhost:3773/health
+```
+
+### What This Does
+
+- **Auto-starts** when you log in
+- **Restarts automatically** if it crashes
+- **Logs to journal** — view with `journalctl --user -u scar-daemon`
+- **Stops cleanly** when you log out
+
+### Check Status
+
+```bash
+systemctl --user status scar-daemon
+```
 
 ---
 
