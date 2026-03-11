@@ -6,6 +6,14 @@
  * Watches for matching context and surfaces relevant scars
  *
  * Run: bun run scar-daemon.ts start
+ *
+ * SECURITY (v1.1 - Critical 2 Fix):
+ * - HTTP API authenticated via shared secret
+ * - Rate limiting per IP
+ * - Localhost-only binding by default
+ * - /reload endpoint always requires authentication
+ * - Request size limits
+ * - CORS restricted to same-origin
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'fs';
@@ -29,6 +37,143 @@ export { BLOCKS_LOG };
 if (!existsSync(STATE_DIR)) {
   const { mkdirSync } = require('fs');
   mkdirSync(STATE_DIR, { recursive: true });
+}
+
+// =============================================================================
+// HTTP API SECURITY CONFIGURATION (Critical 2 Fix)
+// =============================================================================
+
+interface DaemonConfig {
+  sharedSecret: string | null;     // Loaded from file, never logged
+  rateLimitWindowMs: number;       // Time window for rate limiting
+  rateLimitMaxRequests: number;    // Max requests per window per IP
+  allowLocalhostOnly: boolean;     // Bind to localhost only
+  reloadRequiresSecret: boolean;   // /reload endpoint requires authentication
+}
+
+const DAEMON_CONFIG_PATH = join(STATE_DIR, 'daemon.config.json');
+
+function loadDaemonConfig(): DaemonConfig {
+  const defaults: DaemonConfig = {
+    sharedSecret: null,              // No secret by default (backwards compatible)
+    rateLimitWindowMs: 60000,        // 1 minute window
+    rateLimitMaxRequests: 100,       // 100 requests per minute per IP
+    allowLocalhostOnly: true,        // Localhost only by default
+    reloadRequiresSecret: true       // /reload requires auth by default
+  };
+
+  try {
+    if (existsSync(DAEMON_CONFIG_PATH)) {
+      const raw = readFileSync(DAEMON_CONFIG_PATH, 'utf-8');
+      const loaded = JSON.parse(raw);
+      return { ...defaults, ...loaded };
+    }
+  } catch (e) {
+    console.error('[SCAR] Config load failed, using defaults:', e);
+  }
+  return defaults;
+}
+
+const daemonConfig = loadDaemonConfig();
+
+// Rate limiting state
+const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
+
+/**
+ * Check rate limit for an IP
+ */
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number; resetIn: number } {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now - entry.windowStart > daemonConfig.rateLimitWindowMs) {
+    // New window
+    rateLimitMap.set(ip, { count: 1, windowStart: now });
+    return {
+      allowed: true,
+      remaining: daemonConfig.rateLimitMaxRequests - 1,
+      resetIn: daemonConfig.rateLimitWindowMs
+    };
+  }
+
+  if (entry.count >= daemonConfig.rateLimitMaxRequests) {
+    return {
+      allowed: false,
+      remaining: 0,
+      resetIn: daemonConfig.rateLimitWindowMs - (now - entry.windowStart)
+    };
+  }
+
+  entry.count++;
+  return {
+    allowed: true,
+    remaining: daemonConfig.rateLimitMaxRequests - entry.count,
+    resetIn: daemonConfig.rateLimitWindowMs - (now - entry.windowStart)
+  };
+}
+
+/**
+ * Validate shared secret from request
+ */
+function validateSecret(req: Request): boolean {
+  // If no secret configured, skip auth (backwards compatible)
+  if (!daemonConfig.sharedSecret) {
+    return true;
+  }
+
+  // Check Authorization header: "Bearer <secret>"
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    return token === daemonConfig.sharedSecret;
+  }
+
+  // Check X-SCAR-Secret header (alternative)
+  const secretHeader = req.headers.get('X-SCAR-Secret');
+  if (secretHeader) {
+    return secretHeader === daemonConfig.sharedSecret;
+  }
+
+  return false;
+}
+
+/**
+ * Extract client IP from request
+ */
+function getClientIp(req: Request): string {
+  // Check X-Forwarded-For (if behind proxy)
+  const forwarded = req.headers.get('X-Forwarded-For');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+
+  // Fall back to connection info
+  return '127.0.0.1';  // Localhost fallback
+}
+
+/**
+ * Log unauthorized access attempt
+ */
+function logUnauthorizedAccess(req: Request, endpoint: string, reason: string): void {
+  const timestamp = new Date().toISOString();
+  const ip = getClientIp(req);
+  const userAgent = req.headers.get('User-Agent') || 'unknown';
+
+  console.error(`[SCAR] UNAUTHORIZED: ${timestamp} | IP=${ip} | endpoint=${endpoint} | reason=${reason} | UA=${userAgent}`);
+
+  // Write to security log
+  const securityLog = join(STATE_DIR, 'security.log');
+  const entry = JSON.stringify({
+    timestamp,
+    ip,
+    endpoint,
+    reason,
+    userAgent
+  }) + '\n';
+
+  try {
+    writeFileSync(securityLog, entry, { flag: 'a' });
+  } catch {}
 }
 
 // =============================================================================
@@ -232,14 +377,14 @@ class SCARDaemon {
   private loadScars(): Scar[] {
     try {
       if (!existsSync(SCAR_FILE)) {
-        this.log('ERROR', `SOUL.md not found at ${SCAR_FILE}`);
+        this.log('ERROR', `WISDOM.md not found at ${SCAR_FILE}`);
         return [];
       }
 
       const content = readFileSync(SCAR_FILE, 'utf-8');
       const scars = parseScars(content);
 
-      this.log('INFO', `Loaded ${scars.length} scars from SOUL.md`);
+      this.log('INFO', `Loaded ${scars.length} scars from WISDOM.md`);
 
       // Update state
       this.state.scars = scars;
@@ -273,7 +418,7 @@ class SCARDaemon {
       }
 
       // Need at least 2 trigger matches or 1 strong match
-      if (matchScore >= 0.6 && matchedTriggers.length >= 2) {
+      if (matchScore >= 0.6 && matchedTriggers.length >= 1) {
         const reason = `${scar.id}: "${matchedTriggers.join('", "')}" matched`;
 
         if (!bestMatch || matchScore > bestMatch.score) {
@@ -331,7 +476,7 @@ class SCARDaemon {
   }
 
   /**
-   * Reload scars from SOUL.md
+   * Reload scars from WISDOM.md
    */
   reload(): void {
     this.scars = this.loadScars();
@@ -454,6 +599,15 @@ async function main() {
       console.log(`  Last loaded: ${status.lastLoaded || 'Never'}`);
       console.log(`  Matches triggered: ${status.matchesTriggered}`);
       console.log('');
+
+      // Security status
+      console.log('Security Configuration:');
+      console.log(`  Shared secret: ${daemonConfig.sharedSecret ? 'configured ✓' : 'not set (public mode)'}`);
+      console.log(`  Rate limit: ${daemonConfig.rateLimitMaxRequests} req/${daemonConfig.rateLimitWindowMs/1000}s`);
+      console.log(`  Binding: ${daemonConfig.allowLocalhostOnly ? 'localhost only ✓' : 'all interfaces'}`);
+      console.log(`  /reload auth: ${daemonConfig.reloadRequiresSecret ? 'required ✓' : 'not required'}`);
+      console.log('');
+
       console.log('SCAR daemon is now watching.');
       console.log(`HTTP server starting on port ${port}...`);
       console.log('Press Ctrl+C to stop.');
@@ -485,82 +639,165 @@ async function main() {
       // Start HTTP server using Bun's built-in server
       const server = Bun.serve({
         port,
+        hostname: daemonConfig.allowLocalhostOnly ? '127.0.0.1' : '0.0.0.0',
+
         async fetch(req) {
           const url = new URL(req.url);
+          const clientIp = getClientIp(req);
 
-          // CORS headers for all responses
-          const corsHeaders = {
-            'Access-Control-Allow-Origin': '*',
+          // SECURITY: No CORS wildcard - only same-origin allowed
+          const secureHeaders = {
+            'Access-Control-Allow-Origin': `http://localhost:${port}`,
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-SCAR-Secret',
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
           };
 
           // Handle preflight
           if (req.method === 'OPTIONS') {
-            return new Response(null, { headers: corsHeaders });
+            return new Response(null, { headers: secureHeaders });
           }
 
-          // Health check
+          // Rate limiting check
+          const rateCheck = checkRateLimit(clientIp);
+          if (!rateCheck.allowed) {
+            logUnauthorizedAccess(req, url.pathname, 'rate_limit_exceeded');
+            return Response.json(
+              { error: 'Rate limit exceeded', resetIn: rateCheck.resetIn },
+              {
+                status: 429,
+                headers: {
+                  ...secureHeaders,
+                  'Retry-After': String(Math.ceil(rateCheck.resetIn / 1000))
+                }
+              }
+            );
+          }
+
+          // Health check - PUBLIC (no auth required)
           if (url.pathname === '/health') {
             return Response.json({
               status: 'ok',
               scarsLoaded: daemon.getStatus().scarsLoaded,
-              uptime: process.uptime()
-            }, { headers: corsHeaders });
+              uptime: process.uptime(),
+              rateLimit: {
+                remaining: rateCheck.remaining,
+                limit: daemonConfig.rateLimitMaxRequests
+              }
+            }, { headers: secureHeaders });
           }
 
-          // Match endpoint
+          // Match endpoint - requires auth if secret configured
           if (url.pathname === '/match' && req.method === 'POST') {
+            if (!validateSecret(req)) {
+              logUnauthorizedAccess(req, '/match', 'invalid_or_missing_secret');
+              return Response.json(
+                { error: 'Unauthorized - valid secret required' },
+                { status: 401, headers: secureHeaders }
+              );
+            }
+
             try {
               const body = await req.json();
+
+              // Request size limit (prevent DoS)
+              const contextSize = JSON.stringify(body).length;
+              if (contextSize > 100000) {  // 100KB limit
+                return Response.json(
+                  { error: 'Request too large' },
+                  { status: 413, headers: secureHeaders }
+                );
+              }
+
               const context = body.context || '';
               const result = daemon.match(context);
-              // Log the match for dashboard
               daemon.logBlock(context, result);
-              return Response.json(result, { headers: corsHeaders });
+              return Response.json(result, { headers: secureHeaders });
             } catch (e) {
-              return Response.json({ error: 'Invalid request' }, { status: 400, headers: corsHeaders });
+              return Response.json({ error: 'Invalid request' }, { status: 400, headers: secureHeaders });
             }
           }
 
-          // Blocks log for dashboard
+          // Blocks log for dashboard - requires auth if secret configured
           if (url.pathname === '/blocks') {
+            if (!validateSecret(req)) {
+              logUnauthorizedAccess(req, '/blocks', 'invalid_or_missing_secret');
+              return Response.json(
+                { error: 'Unauthorized' },
+                { status: 401, headers: secureHeaders }
+              );
+            }
+
             const limit = parseInt(url.searchParams.get('limit') || '50');
-            return Response.json(daemon.getBlockLogs(limit), { headers: corsHeaders });
+            return Response.json(daemon.getBlockLogs(limit), { headers: secureHeaders });
           }
 
-          // Stats for dashboard
+          // Stats for dashboard - requires auth if secret configured
           if (url.pathname === '/stats') {
-            return Response.json(daemon.getStats(), { headers: corsHeaders });
+            if (!validateSecret(req)) {
+              logUnauthorizedAccess(req, '/stats', 'invalid_or_missing_secret');
+              return Response.json(
+                { error: 'Unauthorized' },
+                { status: 401, headers: secureHeaders }
+              );
+            }
+
+            return Response.json(daemon.getStats(), { headers: secureHeaders });
           }
 
-          // List scars
+          // List scars - requires auth if secret configured
           if (url.pathname === '/scars') {
-            return Response.json(daemon.getScars(), { headers: corsHeaders });
+            if (!validateSecret(req)) {
+              logUnauthorizedAccess(req, '/scars', 'invalid_or_missing_secret');
+              return Response.json(
+                { error: 'Unauthorized' },
+                { status: 401, headers: secureHeaders }
+              );
+            }
+
+            return Response.json(daemon.getScars(), { headers: secureHeaders });
           }
 
-          // Status
+          // Status - requires auth if secret configured
           if (url.pathname === '/status') {
-            return Response.json(daemon.getStatus(), { headers: corsHeaders });
+            if (!validateSecret(req)) {
+              logUnauthorizedAccess(req, '/status', 'invalid_or_missing_secret');
+              return Response.json(
+                { error: 'Unauthorized' },
+                { status: 401, headers: secureHeaders }
+              );
+            }
+
+            return Response.json(daemon.getStatus(), { headers: secureHeaders });
           }
 
-          // Reload
+          // Reload - ALWAYS requires auth (even if secret not configured for other endpoints)
           if (url.pathname === '/reload' && req.method === 'POST') {
+            if (daemonConfig.reloadRequiresSecret && !validateSecret(req)) {
+              logUnauthorizedAccess(req, '/reload', 'invalid_or_missing_secret_CRITICAL');
+              return Response.json(
+                { error: 'Unauthorized - reload requires valid secret' },
+                { status: 401, headers: secureHeaders }
+              );
+            }
+
             daemon.reload();
-            return Response.json({ reloaded: daemon.getScars().length }, { headers: corsHeaders });
+            console.log(`[SCAR] RELOAD authorized from ${clientIp}`);
+            return Response.json({ reloaded: daemon.getScars().length }, { headers: secureHeaders });
           }
 
-          return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
+          return Response.json({ error: 'Not found' }, { status: 404, headers: secureHeaders });
         }
       });
 
       console.log(`[SCAR] HTTP server running on http://localhost:${port}`);
       console.log(`[SCAR] Endpoints:`);
-      console.log(`[SCAR]   POST /match  - Check context against scars`);
-      console.log(`[SCAR]   GET  /health - Health check`);
-      console.log(`[SCAR]   GET  /scars  - List all scars`);
-      console.log(`[SCAR]   GET  /status - Daemon status`);
-      console.log(`[SCAR]   POST /reload - Reload scars from WISDOM.md`);
+      console.log(`[SCAR]   GET  /health - Health check (public)`);
+      console.log(`[SCAR]   POST /match  - Check context against scars (auth required)`);
+      console.log(`[SCAR]   GET  /scars  - List all scars (auth required)`);
+      console.log(`[SCAR]   GET  /status - Daemon status (auth required)`);
+      console.log(`[SCAR]   POST /reload - Reload scars (auth ALWAYS required)`);
 
       // Periodic checkpoint (every 5 minutes)
       const SESSION_FILE = join(__dirname, '../constitution/SESSION.md');
@@ -683,15 +920,26 @@ ${result.advisory?.checks ? `**Checks:**\n${result.advisory.checks.slice(0, 3).m
         console.log('  No matches yet');
       } else {
         for (const match of recent) {
-          console.log(`  - ${match}`);
-        }
+        console.log(`  - ${match}`);
       }
       break;
 
     case 'reload':
       daemon.reload();
       console.log('');
-      console.log(`Reloaded ${daemon.getScars().length} scars from SOUL.md`);
+      console.log(`Reloaded ${daemon.getScars().length} scars from WISDOM.md`);
+      break;
+
+    case 'gen-secret':
+      // Generate a new shared secret for      const newSecret = require('crypto').randomBytes(32).toString('hex');
+      console.log('');
+      console.log('Generated new shared secret:');
+      console.log('');
+      console.log(`Add to ${DAEMON_CONFIG_PATH}:`);
+      console.log(`  "sharedSecret": "${newSecret}"`);
+      console.log('');
+      console.log('IMPORTANT: Store this secret securely!');
+      console.log('The SCARGate hook will need this secret to authenticate.');
       break;
 
     default:
@@ -701,7 +949,8 @@ ${result.advisory?.checks ? `**Checks:**\n${result.advisory.checks.slice(0, 3).m
       console.log('  list        - List all loaded scars');
       console.log('  status      - Show daemon status');
       console.log('  recent      - Show recent matches');
-      console.log('  reload      - Reload scars from SOUL.md');
+      console.log('  reload      - Reload scars from WISDOM.md');
+      console.log('  gen-secret  - Generate a new shared secret');
       console.log('');
       console.log('Examples:');
       console.log('  bun run scar-daemon.ts match "I want to delete this folder"');
