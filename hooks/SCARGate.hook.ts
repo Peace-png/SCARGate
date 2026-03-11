@@ -32,7 +32,7 @@
 
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, renameSync } from 'fs';
 import { createHash } from 'crypto';
 
 // Get directory of this hook file
@@ -88,6 +88,179 @@ function loadConfig(): SCARGateConfig {
 
 // Load config once at startup
 const config = loadConfig();
+
+// ========================================
+// APPROVAL QUEUE CONFIGURATION (v1.2)
+// ========================================
+
+const APPROVAL_QUEUE_FILE = join(PAI_ROOT, 'SCARGate_approval_queue.json');
+const APPROVED_ACTIONS_FILE = join(PAI_ROOT, 'SCARGate_approved.json');
+const SESSION_SUPPRESS_FILE = join(PAI_ROOT, 'SCARGate_session_suppress.json');
+
+const APPROVAL_EXPIRY_MS = 5 * 60 * 1000;      // 5 minutes for pending approval
+const APPROVED_EXPIRY_MS = 60 * 60 * 1000;     // 1 hour for approved action
+const SUPPRESS_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours for session suppress
+
+interface ApprovalEntry {
+  id: string;
+  actionHash: string;
+  toolName: string;
+  toolInput: any;
+  matchedPrinciple: string;
+  reason: string;
+  timestamp: string;
+  status: 'pending' | 'approved' | 'denied' | 'suppressed';
+  expiresAt: string;
+}
+
+interface ApprovedAction {
+  actionHash: string;
+  approvedAt: string;
+  expiresAt: string;
+  approvedBy: 'pilot';
+}
+
+interface SessionSuppress {
+  pattern: string;
+  toolName: string;
+  suppressedAt: string;
+  expiresAt: string;
+}
+
+/**
+ * Generate a unique hash for a tool action.
+ * This allows us to match re-issued commands to pre-approved actions.
+ */
+function generateActionHash(toolName: string, toolInput: any): string {
+  const normalized = JSON.stringify({
+    tool: toolName,
+    input: toolInput
+  });
+  return createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+}
+
+/**
+ * Load JSON array from file, return empty array if not exists.
+ */
+function loadJsonArray<T>(path: string): T[] {
+  try {
+    if (existsSync(path)) {
+      const content = readFileSync(path, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch (e) {
+    console.error(`[SCARGate] Failed to load ${path}:`, e);
+  }
+  return [];
+}
+
+/**
+ * Save JSON array to file atomically.
+ */
+function saveJsonArray<T>(path: string, data: T[]): void {
+  try {
+    const tmpPath = path + '.tmp';
+    writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    renameSync(tmpPath, path);
+  } catch (e) {
+    console.error(`[SCARGate] Failed to save ${path}:`, e);
+  }
+}
+
+/**
+ * Remove expired entries from approval queue.
+ */
+function cleanExpiredQueue(queue: ApprovalEntry[]): ApprovalEntry[] {
+  const now = new Date();
+  return queue.filter(entry => new Date(entry.expiresAt) > now);
+}
+
+/**
+ * Remove expired entries from approved actions.
+ */
+function cleanExpiredApproved(approved: ApprovedAction[]): ApprovedAction[] {
+  const now = new Date();
+  return approved.filter(entry => new Date(entry.expiresAt) > now);
+}
+
+/**
+ * Remove expired entries from session suppressions.
+ */
+function cleanExpiredSuppress(suppress: SessionSuppress[]): SessionSuppress[] {
+  const now = new Date();
+  return suppress.filter(entry => new Date(entry.expiresAt) > now);
+}
+
+/**
+ * Add an action to the approval queue.
+ */
+function queueForApproval(
+  toolName: string,
+  toolInput: any,
+  matchedPrinciple: string,
+  reason: string
+): ApprovalEntry {
+  const queue = cleanExpiredQueue(loadJsonArray<ApprovalEntry>(APPROVAL_QUEUE_FILE));
+
+  const entry: ApprovalEntry = {
+    id: createHash('md5').update(Date.now().toString()).digest('hex').slice(0, 8),
+    actionHash: generateActionHash(toolName, toolInput),
+    toolName,
+    toolInput,
+    matchedPrinciple,
+    reason,
+    timestamp: new Date().toISOString(),
+    status: 'pending',
+    expiresAt: new Date(Date.now() + APPROVAL_EXPIRY_MS).toISOString()
+  };
+
+  queue.push(entry);
+  saveJsonArray(APPROVAL_QUEUE_FILE, queue);
+
+  return entry;
+}
+
+/**
+ * Check if an action has been pre-approved.
+ */
+function isPreApproved(toolName: string, toolInput: any): boolean {
+  const approved = cleanExpiredApproved(loadJsonArray<ApprovedAction>(APPROVED_ACTIONS_FILE));
+  const actionHash = generateActionHash(toolName, toolInput);
+  return approved.some(entry => entry.actionHash === actionHash);
+}
+
+/**
+ * Check if an action matches a session suppression pattern.
+ */
+function isSessionSuppressed(toolName: string, toolInput: any): boolean {
+  const suppressions = cleanExpiredSuppress(loadJsonArray<SessionSuppress>(SESSION_SUPPRESS_FILE));
+
+  for (const sup of suppressions) {
+    // Check tool name match
+    if (sup.toolName !== toolName) continue;
+
+    // Check pattern match against command/input
+    try {
+      const inputStr = JSON.stringify(toolInput);
+      const pattern = new RegExp(sup.pattern, 'i');
+      if (pattern.test(inputStr)) {
+        return true;
+      }
+    } catch {
+      // Invalid regex, skip
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Get pending approvals from queue.
+ */
+function getPendingApprovals(): ApprovalEntry[] {
+  const queue = cleanExpiredQueue(loadJsonArray<ApprovalEntry>(APPROVAL_QUEUE_FILE));
+  return queue.filter(entry => entry.status === 'pending');
+}
 
 // ========================================
 // TAMPER-EVIDENT AUDIT TRAIL (Critical 1 Fix)
@@ -768,6 +941,304 @@ function isReadOnly(toolName: string, toolInput: any): boolean {
 }
 
 // ========================================
+// CONFIRM VS BLOCK CLASSIFICATION (v1.2)
+// ========================================
+
+/**
+ * Patterns that trigger CONFIRM (queue for pilot approval).
+ * These are medium-risk actions that may be intentional but warrant oversight.
+ */
+const CONFIRM_PATTERNS: Array<{
+  pattern: RegExp;
+  reason: string;
+  principle: string;
+}> = [
+  // Git operations (visible but not destructive)
+  {
+    pattern: /\bgit\s+push\b/i,
+    reason: 'Git push to remote repository',
+    principle: 'P1'
+  },
+  {
+    pattern: /\bgit\s+commit\b/i,
+    reason: 'Git commit changes',
+    principle: 'P1'
+  },
+  {
+    pattern: /\bgit\s+config\s+/i,
+    reason: 'Git configuration change',
+    principle: 'P1'
+  },
+  {
+    pattern: /\bgit\s+reset\b/i,
+    reason: 'Git reset operation',
+    principle: 'P1'
+  },
+  {
+    pattern: /\bgit\s+rebase\b/i,
+    reason: 'Git rebase operation',
+    principle: 'P1'
+  },
+
+  // File copies between directories
+  {
+    pattern: /\bcp\s+/i,
+    reason: 'File copy operation',
+    principle: 'P5'
+  },
+  {
+    pattern: /\bcopy\s+/i,
+    reason: 'File copy operation',
+    principle: 'P5'
+  },
+  {
+    pattern: /\brsync\s+/i,
+    reason: 'File sync operation',
+    principle: 'P5'
+  },
+
+  // Config file changes
+  {
+    pattern: /config\.json/i,
+    reason: 'Config file modification',
+    principle: 'P9'
+  },
+  {
+    pattern: /settings\.json/i,
+    reason: 'Settings file modification',
+    principle: 'P9'
+  },
+  {
+    pattern: /\.env\b/i,
+    reason: 'Environment file modification',
+    principle: 'P9'
+  },
+
+  // Move/rename operations (destructive but often intentional)
+  {
+    pattern: /\bmv\s+/i,
+    reason: 'File move/rename operation',
+    principle: 'P1'
+  },
+
+  // Write to project directories (potentially risky)
+  {
+    pattern: /\btee\s+/i,
+    reason: 'Tee write operation',
+    principle: 'P5'
+  },
+];
+
+/**
+ * Patterns that ALWAYS block - no approval path.
+ * These are critical violations that should never proceed without explicit override.
+ */
+const ALWAYS_BLOCK_PATTERNS: Array<{
+  pattern: RegExp;
+  reason: string;
+}> = [
+  // Critical filesystem destruction
+  {
+    pattern: /\brm\s+(-[rf]+\s+)*\/\b/i,
+    reason: 'Destructive root filesystem operation'
+  },
+  {
+    pattern: /\brm\s+.*--no-preserve-root/i,
+    reason: 'Forced root filesystem destruction'
+  },
+  {
+    pattern: /\bshred\s+/i,
+    reason: 'Secure file destruction'
+  },
+  {
+    pattern: /\bwipe\s+/i,
+    reason: 'Filesystem wipe operation'
+  },
+  {
+    pattern: /\bdd\s+.*of=\/dev\//i,
+    reason: 'Direct disk write operation'
+  },
+
+  // Privilege escalation
+  {
+    pattern: /\bsudo\s+/i,
+    reason: 'Privilege escalation attempt'
+  },
+  {
+    pattern: /\bsu\s+/i,
+    reason: 'User switching attempt'
+  },
+  {
+    pattern: /\bdoas\s+/i,
+    reason: 'Privilege escalation attempt'
+  },
+  {
+    pattern: /\bpkexec\s+/i,
+    reason: 'Polkit privilege escalation'
+  },
+
+  // Data exfiltration vectors
+  {
+    pattern: /\bcurl\s+.*(-X\s+POST|-X\s+PUT|--data)/i,
+    reason: 'HTTP data exfiltration attempt'
+  },
+  {
+    pattern: /\bwget\s+.*(--post|--method)/i,
+    reason: 'HTTP data exfiltration attempt'
+  },
+  {
+    pattern: /\bnc\s+.*(-e|-c|--exec)/i,
+    reason: 'Netcat reverse shell attempt'
+  },
+  {
+    pattern: /\bnetcat\s+.*(-e|-c|--exec)/i,
+    reason: 'Netcat reverse shell attempt'
+  },
+
+  // Critical system modification
+  {
+    pattern: /\/etc\/passwd/i,
+    reason: 'Password file modification'
+  },
+  {
+    pattern: /\/etc\/shadow/i,
+    reason: 'Shadow file modification'
+  },
+  {
+    pattern: /\/etc\/sudoers/i,
+    reason: 'Sudoers modification'
+  },
+];
+
+/**
+ * Check if a tool input matches any CONFIRM pattern.
+ */
+function matchesConfirmPattern(toolName: string, toolInput: any): { matched: boolean; reason?: string; principle?: string } {
+  const inputStr = toolName === 'Bash'
+    ? toolInput?.command || ''
+    : JSON.stringify(toolInput);
+
+  for (const cp of CONFIRM_PATTERNS) {
+    if (cp.pattern.test(inputStr)) {
+      return { matched: true, reason: cp.reason, principle: cp.principle };
+    }
+  }
+
+  return { matched: false };
+}
+
+/**
+ * Check if a tool input matches any ALWAYS_BLOCK pattern.
+ */
+function matchesAlwaysBlockPattern(toolName: string, toolInput: any): { matched: boolean; reason?: string } {
+  const inputStr = toolName === 'Bash'
+    ? toolInput?.command || ''
+    : JSON.stringify(toolInput);
+
+  for (const bp of ALWAYS_BLOCK_PATTERNS) {
+    if (bp.pattern.test(inputStr)) {
+      return { matched: true, reason: bp.reason };
+    }
+  }
+
+  return { matched: false };
+}
+
+/**
+ * Classification result for a tool operation.
+ * - allow: Proceed without restriction
+ * - confirm: Queue for pilot approval
+ * - block: Hard block, no approval path
+ */
+type MatchClassification = 'allow' | 'confirm' | 'block';
+
+/**
+ * Classify a tool operation based on patterns and SCAR match.
+ * This is the central decision point for v1.2.
+ */
+function classifyMatch(
+  toolName: string,
+  toolInput: any,
+  scarResult: any
+): { classification: MatchClassification; reason?: string; principle?: string } {
+
+  // Step 1: Check ALWAYS_BLOCK patterns first (highest priority)
+  const blockMatch = matchesAlwaysBlockPattern(toolName, toolInput);
+  if (blockMatch.matched) {
+    return { classification: 'block', reason: blockMatch.reason };
+  }
+
+  // Step 2: Check CONFIRM patterns
+  const confirmMatch = matchesConfirmPattern(toolName, toolInput);
+  if (confirmMatch.matched) {
+    return {
+      classification: 'confirm',
+      reason: confirmMatch.reason,
+      principle: confirmMatch.principle
+    };
+  }
+
+  // Step 3: Check SCAR match result
+  if (scarResult?.matched && scarResult?.scar) {
+    const scar = scarResult.scar;
+    const relevance = scarResult.relevance || 0;
+    const level = (scar.level || '').toLowerCase();
+
+    // High relevance on Critical/High scar = BLOCK
+    if (relevance >= 0.8 && (level.includes('critical') || level.includes('high'))) {
+      if (scar.constraints && scar.constraints.length > 0) {
+        const plainReason = (scar.yang || 'it could cause problems')
+          .replace(/\*\*/g, '')
+          .replace(/`[^`]+`/g, 'the file')
+          .replace(/\n/g, ' ')
+          .slice(0, 150);
+
+        return { classification: 'block', reason: plainReason };
+      }
+    }
+
+    // Medium relevance = CONFIRM (may be intentional)
+    if (relevance >= 0.5) {
+      return {
+        classification: 'confirm',
+        reason: scar.yang || 'matches governance principle',
+        principle: scar.id
+      };
+    }
+  }
+
+  // Default: allow
+  return { classification: 'allow' };
+}
+
+/**
+ * Generate the reason string for a CONFIRM response.
+ */
+function getConfirmReason(entry: ApprovalEntry): string {
+  return `🔒 Approval required.
+
+Action: ${entry.reason}
+Principle: ${entry.matchedPrinciple}
+
+This action has been queued for your approval.
+Run: scargate-approve
+
+Queue ID: ${entry.id}`;
+}
+
+/**
+ * Generate the reason string for a BLOCK response.
+ */
+function getBlockReason(rawReason: string): string {
+  return `🚫 Hard blocked.
+
+${rawReason}
+
+This action cannot be approved through the normal flow.
+If you absolutely must proceed, tell me "yes do it anyway" and I will.`;
+}
+
+// ========================================
 // Main Hook Logic
 // ========================================
 
@@ -807,6 +1278,18 @@ async function main() {
 
   const { tool_name, tool_input } = data;
 
+  // v1.2: Check session suppression FIRST (fastest path)
+  if (isSessionSuppressed(tool_name, tool_input)) {
+    console.log(JSON.stringify({ continue: true }));
+    process.exit(0);
+  }
+
+  // v1.2: Check pre-approval SECOND
+  if (isPreApproved(tool_name, tool_input)) {
+    console.log(JSON.stringify({ continue: true }));
+    process.exit(0);
+  }
+
   // Allow read-only operations to pass through without SCAR blocking
   // SCAR protects against destructive actions, not information gathering
   if (isReadOnly(tool_name, tool_input)) {
@@ -818,23 +1301,42 @@ async function main() {
   const context = buildContext(tool_name, tool_input);
 
   // Try HTTP first (preferred - talks to running daemon)
+  let scarResult: any = null;
   const daemonPort = await checkDaemonRunning();
   if (daemonPort) {
-    const result = await matchViaHttp(daemonPort, context);
-    if (result) {
-      const { block, reason } = shouldBlock(result);
-      if (block) {
-        // Log to file for non-coder visibility
-        logBlock(tool_name, tool_input, result.scar, result.relevance);
-        // Output explanation to STDERR (visible in terminal)
-        process.stderr.write('\n' + reason + '\n\n');
-        // Output JSON to STDOUT (for framework)
-        console.log(JSON.stringify({
-          continue: false,
-          reason: reason
-        }));
-        process.exit(0);
+    scarResult = await matchViaHttp(daemonPort, context);
+    if (scarResult) {
+      // v1.2: Classify match
+      const { classification, reason, principle } = classifyMatch(tool_name, tool_input, scarResult);
+
+      switch (classification) {
+        case 'allow':
+          console.log(JSON.stringify({ continue: true }));
+          process.exit(0);
+
+        case 'confirm':
+          // Queue for approval
+          const entry = queueForApproval(tool_name, tool_input, principle || 'P1', reason || 'Action requires approval');
+          const confirmReason = getConfirmReason(entry);
+          process.stderr.write('\n' + confirmReason + '\n\n');
+          console.log(JSON.stringify({
+            continue: false,
+            reason: confirmReason
+          }));
+          process.exit(0);
+
+        case 'block':
+          // Hard block - no approval path
+          const blockReason = getBlockReason(reason || 'Action blocked');
+          logBlock(tool_name, tool_input, scarResult.scar, scarResult.relevance);
+          process.stderr.write('\n' + blockReason + '\n\n');
+          console.log(JSON.stringify({
+            continue: false,
+            reason: blockReason
+          }));
+          process.exit(0);
       }
+
       // Match succeeded, allow tool
       console.log(JSON.stringify({ continue: true }));
       process.exit(0);
@@ -867,21 +1369,37 @@ async function main() {
 
   // Run SCAR match
   try {
-    const result = daemon.match(context);
+    scarResult = daemon.match(context);
 
-    // Check if we should block
-    const { block, reason } = shouldBlock(result);
+    // v1.2: Classify match
+    const { classification, reason, principle } = classifyMatch(tool_name, tool_input, scarResult);
 
-    if (block) {
-      // Log to file for non-coder visibility
-      logBlock(tool_name, tool_input, result.scar, result.relevance);
-      // Print explanation to stderr so it surfaces in terminal
-      console.error('\n' + reason + '\n');
-      console.log(JSON.stringify({
-        continue: false,
-        reason: reason
-      }));
-      process.exit(0);
+    switch (classification) {
+      case 'allow':
+        console.log(JSON.stringify({ continue: true }));
+        process.exit(0);
+
+      case 'confirm':
+        // Queue for approval
+        const entry = queueForApproval(tool_name, tool_input, principle || 'P1', reason || 'Action requires approval');
+        const confirmReason = getConfirmReason(entry);
+        process.stderr.write('\n' + confirmReason + '\n\n');
+        console.log(JSON.stringify({
+          continue: false,
+          reason: confirmReason
+        }));
+        process.exit(0);
+
+      case 'block':
+        // Hard block - no approval path
+        const blockReason = getBlockReason(reason || 'Action blocked');
+        logBlock(tool_name, tool_input, scarResult?.scar, scarResult?.relevance);
+        process.stderr.write('\n' + blockReason + '\n\n');
+        console.log(JSON.stringify({
+          continue: false,
+          reason: blockReason
+        }));
+        process.exit(0);
     }
   } catch (e) {
     // Match error - LOG IT (Critical 1 Fix)
